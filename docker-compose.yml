@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: orderflow-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: orderflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data  # ← ДВОЕТОЧИЕ ОБЯЗАТЕЛЬНО
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build: ./auth-service
+    container_name: orderflow-auth
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_DSN=postgres://postgres:postgres@postgres:5432/orderflow?sslmode=disable
+      - JWT_SECRET=shared-secret-123
+      - PORT=8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  order-service:
+    build: ./order-service
+    container_name: orderflow-order
+    ports:
+      - "8082:8082"
+    environment:
+      - DB_DSN=postgres://postgres:postgres@postgres:5432/orderflow?sslmode=disable
+      - JWT_SECRET=shared-secret-123
+      - PORT=8082
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pg_data:
