@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kekus228swaga/orderflow/order-service/internal/handler"
+	"github.com/kekus228swaga/orderflow/order-service/internal/publisher"
 	"github.com/kekus228swaga/orderflow/order-service/internal/repository"
 	"github.com/kekus228swaga/orderflow/order-service/internal/service"
 
@@ -46,18 +47,27 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"service": "order", "status": "ok"})
 	})
 
-	// Инициализация компонентов
+	// Инициализация RabbitMQ Publisher
+	pub, err := publisher.NewPublisher("amqp://guest:guest@rabbitmq:5672/", "order.created")
+	if err != nil {
+		log.Fatalf("❌ RabbitMQ publisher init failed: %v", err)
+	}
+	defer pub.Channel.Close()
+
+	// Инициализация слоев
 	orderRepo := repository.NewOrderRepo(pool)
 	orderService := service.NewOrderService(orderRepo)
-	orderHandler := handler.NewOrderHandler(orderService)
 
-	// Защищенная группа
+	// Передаём publisher в хендлер
+	orderHandler := handler.NewOrderHandler(orderService, pub)
+
+	// Роуты
 	protected := r.Group("/orders")
 	protected.Use(middleware.JWTAuth(cfg.JWTSecret))
 	{
-		protected.POST("", orderHandler.Create) // POST /orders
+		protected.POST("", orderHandler.Create)
 		protected.GET("/me", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"message": "Token is valid!", "user_id": c.GetInt64(middleware.UserIDKey)})
+			c.JSON(http.StatusOK, gin.H{"message": "ok", "user_id": c.GetInt64(middleware.UserIDKey)})
 		})
 	}
 

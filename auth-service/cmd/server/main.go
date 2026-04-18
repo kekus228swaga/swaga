@@ -11,6 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/kekus228swaga/orderflow/auth-service/internal/middleware"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/kekus228swaga/orderflow/auth-service/internal/config"
 	"github.com/kekus228swaga/orderflow/auth-service/internal/handler"
@@ -38,6 +40,22 @@ func main() {
 	}
 	log.Println("✅ PostgreSQL connected")
 
+	// 2.1 Подключение к Redis
+	// В Docker-сети адрес redis://redis:6379, локально localhost:6379
+	// Для универсальности используем ENV, но пока захардкодим для Docker
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     "redis:6379", // Внутри Docker сети имя сервиса = hostname
+		Password: "",
+		DB:       0,
+	})
+
+	// Проверка связи
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		log.Fatalf("❌ Redis connection error: %v", err)
+	}
+	log.Println("✅ Redis connected")
+	defer redisClient.Close()
+
 	// 3. Инициализация слоев (Dependency Injection)
 	userRepo := repository.NewUserRepo(pool)
 	authService := service.NewAuthService(userRepo)
@@ -55,8 +73,10 @@ func main() {
 	// Группируем роуты авторизации
 	authGroup := r.Group("/auth")
 	{
+		// Применяем Middleware ТОЛЬКО к логину (регистрацию обычно не лимитируют так жестко)
+		// 5 попыток каждые 60 секунд
+		authGroup.POST("/login", middleware.RateLimitMiddleware(redisClient, 5, 60*time.Second), authHandler.Login)
 		authGroup.POST("/register", authHandler.Register)
-		authGroup.POST("/login", authHandler.Login)
 	}
 
 	// 5. Запуск сервера
