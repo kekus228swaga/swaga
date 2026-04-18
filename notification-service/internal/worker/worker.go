@@ -53,7 +53,10 @@ func (w *NotificationWorker) Start(ctx context.Context) error {
 				return nil
 			}
 			w.process(msg)
-			msg.Ack(false) // Подтверждаем обработку
+			err := msg.Ack(false)
+			if err != nil {
+				return err
+			} // Подтверждаем обработку
 		}
 	}
 }
