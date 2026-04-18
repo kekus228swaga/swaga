@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kekus228swaga/orderflow/order-service/internal/handler"
+	"github.com/kekus228swaga/orderflow/order-service/internal/kafka"
 	"github.com/kekus228swaga/orderflow/order-service/internal/publisher"
 	"github.com/kekus228swaga/orderflow/order-service/internal/repository"
 	"github.com/kekus228swaga/orderflow/order-service/internal/service"
@@ -54,12 +55,20 @@ func main() {
 	}
 	defer pub.Channel.Close()
 
+	kafkaBrokers := []string{"kafka:9092"} // Внутри Docker сети
+	kafkaTopic := "order.events"
+
+	kafkaProducer, err := kafka.NewProducer(kafkaBrokers, kafkaTopic)
+	if err != nil {
+		log.Fatalf("❌ Kafka producer init failed: %v", err)
+	}
+
 	// Инициализация слоев
 	orderRepo := repository.NewOrderRepo(pool)
 	orderService := service.NewOrderService(orderRepo)
 
 	// Передаём publisher в хендлер
-	orderHandler := handler.NewOrderHandler(orderService, pub)
+	orderHandler := handler.NewOrderHandler(orderService, pub, kafkaProducer)
 
 	// Роуты
 	protected := r.Group("/orders")
