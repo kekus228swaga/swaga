@@ -32,7 +32,12 @@ func TestUserRepo_Integration(t *testing.T) {
 		t.Fatalf("Failed to start container: %s", err)
 	}
 	// Гарантируем, что контейнер остановится после теста
-	defer postgres.Terminate(ctx)
+	defer func(postgres testcontainers.Container, ctx context.Context, opts ...testcontainers.TerminateOption) {
+		err := postgres.Terminate(ctx, opts...)
+		if err != nil {
+			t.Fatalf("Failed to terminate container: %s", err)
+		}
+	}(postgres, ctx)
 
 	// 2. Получаем DSN для подключения к тестовой базе
 	host, err := postgres.Host(ctx)
